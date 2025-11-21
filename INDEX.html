@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seb's Inventory</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.5.0/dist/Recharts.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+        const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } = Recharts;
+        
+        // Lucide icons as inline SVG components
+        const Trash2 = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+        );
+
+        const AlertCircle = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+        );
+
+        function InventoryApp() {
+            // Load from localStorage or use defaults
+            const loadFromStorage = () => {
+                const saved = localStorage.getItem('sebsInventory');
+                if (saved) {
+                    return JSON.parse(saved);
+                }
+                return [
+                    { id: 1, name: 'Barley', quantity: 15 },
+                    { id: 2, name: 'Bentonite', quantity: 3 },
+                    { id: 3, name: 'Corn', quantity: 8 },
+                    { id: 4, name: 'Flavors', quantity: 20 }
+                ];
+            };
+
+            const [items, setItems] = useState(loadFromStorage);
+            const [newItemName, setNewItemName] = useState('');
+            const [newItemQuantity, setNewItemQuantity] = useState('');
+            const [lowStockThreshold, setLowStockThreshold] = useState(() => {
+                const saved = localStorage.getItem('lowThreshold');
+                return saved ? parseInt(saved) : 5;
+            });
+            const [mediumStockThreshold, setMediumStockThreshold] = useState(() => {
+                const saved = localStorage.getItem('mediumThreshold');
+                return saved ? parseInt(saved) : 10;
+            });
+
+            const defaultItems = ['Barley', 'Bentonite', 'Corn', 'Flavors'];
+
+            // Save to localStorage whenever items change
+            React.useEffect(() => {
+                localStorage.setItem('sebsInventory', JSON.stringify(items));
+            }, [items]);
+
+            React.useEffect(() => {
+                localStorage.setItem('lowThreshold', lowStockThreshold.toString());
+            }, [lowStockThreshold]);
+
+            React.useEffect(() => {
+                localStorage.setItem('mediumThreshold', mediumStockThreshold.toString());
+            }, [mediumStockThreshold]);
+
+            const getStockStatus = (quantity) => {
+                if (quantity <= lowStockThreshold) {
+                    return { color: '#dc2626', label: 'LOW STOCK', bgColor: 'bg-red-50', borderColor: 'border-red-300', textColor: 'text-red-700' };
+                } else if (quantity <= mediumStockThreshold) {
+                    return { color: '#ea580c', label: 'GETTING LOW', bgColor: 'bg-orange-50', borderColor: 'border-orange-300', textColor: 'text-orange-700' };
+                } else {
+                    return { color: '#16a34a', label: 'GOOD STOCK', bgColor: 'bg-green-50', borderColor: 'border-green-300', textColor: 'text-green-700' };
+                }
+            };
+
+            const addItem = () => {
+                if (newItemName.trim() && newItemQuantity) {
+                    const qty = parseInt(newItemQuantity);
+                    if (qty >= 0) {
+                        const newItem = {
+                            id: Date.now(),
+                            name: newItemName.trim(),
+                            quantity: qty
+                        };
+                        
+                        const updatedItems = [...items, newItem].sort((a, b) => {
+                            const aIsDefault = defaultItems.includes(a.name);
+                            const bIsDefault = defaultItems.includes(b.name);
+                            if (aIsDefault && !bIsDefault) return -1;
+                            if (!aIsDefault && bIsDefault) return 1;
+                            return a.name.localeCompare(b.name);
+                        });
+                        setItems(updatedItems);
+                        setNewItemName('');
+                        setNewItemQuantity('');
+                    }
+                }
+            };
+
+            const updateQuantity = (id, newQty) => {
+                const qty = Math.max(0, parseInt(newQty) || 0);
+                setItems(items.map(item => 
+                    item.id === id ? { ...item, quantity: qty } : item
+                ));
+            };
+
+            const deleteItem = (id) => {
+                setItems(items.filter(item => item.id !== id));
+            };
+
+            const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+            const lowStockItems = items.filter(item => item.quantity <= lowStockThreshold).length;
+
+            const chartData = items.map(item => ({
+                name: item.name,
+                quantity: item.quantity,
+                color: getStockStatus(item.quantity).color
+            }));
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 p-4 pb-20">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="bg-white rounded-3xl shadow-xl p-6 mb-6 border-4 border-blue-500">
+                            <div className="flex flex-col items-center mb-4">
+                                <img 
+                                    src="https://github.com/user-attachments/assets/72982b91-433c-4a1e-85b6-cecae16fcf93" 
+                                    alt="Seb's Feed Logo" 
+                                    className="w-40 h-auto mb-3"
+                                />
+                                <h1 className="text-3xl font-bold text-blue-900">Seb's Inventory</h1>
+                                <p className="text-gray-600 text-base font-medium">{items.length} items • {totalItems} total</p>
+                            </div>
+                            {lowStockItems > 0 && (
+                                <div className="bg-red-100 border-2 border-red-400 rounded-xl p-3 flex items-center gap-2">
+                                    <AlertCircle size={24} className="text-red-700" />
+                                    <p className="text-red-900 font-bold text-base">{lowStockItems} item{lowStockItems > 1 ? 's' : ''} low on stock!</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="bg-white rounded-3xl shadow-xl p-6 mb-6 border-4 border-blue-500">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Inventory Levels</h2>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <BarChart data={chartData}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="name" tick={{ fontSize: 14, fontWeight: 'bold' }} />
+                                    <YAxis tick={{ fontSize: 14, fontWeight: 'bold' }} label={{ value: 'Quantity', angle: -90, position: 'insideLeft', style: { fontWeight: 'bold' } }} />
+                                    <Tooltip contentStyle={{ fontWeight: 'bold', fontSize: '16px' }} />
+                                    <Bar dataKey="quantity" radius={[8, 8, 0, 0]}>
+                                        {chartData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                            <div className="mt-4 flex justify-center gap-6 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 bg-green-600 rounded"></div>
+                                    <span className="font-bold text-sm">Good Stock</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 bg-orange-600 rounded"></div>
+                                    <span className="font-bold text-sm">Getting Low</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 bg-red-600 rounded"></div>
+                                    <span className="font-bold text-sm">Low Stock</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <div className="bg-white rounded-3xl shadow-xl p-6 border-4 border-green-500">
+                                <h2 className="text-xl font-bold text-gray-800 mb-4">Alert Settings</h2>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-base font-semibold text-gray-700 mb-2">Low Stock Alert (Red):</label>
+                                        <input
+                                            type="number"
+                                            value={lowStockThreshold}
+                                            onChange={(e) => setLowStockThreshold(parseInt(e.target.value) || 0)}
+                                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-300 text-xl font-bold"
+                                            min="0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-base font-semibold text-gray-700 mb-2">Getting Low Alert (Orange):</label>
+                                        <input
+                                            type="number"
+                                            value={mediumStockThreshold}
+                                            onChange={(e) => setMediumStockThreshold(parseInt(e.target.value) || 0)}
+                                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-300 text-xl font-bold"
+                                            min="0"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-3xl shadow-xl p-6 border-4 border-blue-500">
+                                <h2 className="text-xl font-bold text-gray-800 mb-4">Add Custom Item</h2>
+                                <div className="space-y-3">
+                                    <input
+                                        type="text"
+                                        placeholder="Item name"
+                                        value={newItemName}
+                                        onChange={(e) => setNewItemName(e.target.value)}
+                                        className="w-full px-4 py-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-300 text-xl font-semibold"
+                                    />
+                                    <input
+                                        type="number"
+                                        placeholder="Quantity"
+                                        value={newItemQuantity}
+                                        onChange={(e) => setNewItemQuantity(e.target.value)}
+                                        className="w-full px-4 py-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-300 text-xl font-semibold"
+                                        min="0"
+                                    />
+                                    <button
+                                        onClick={addItem}
+                                        className="w-full bg-gradient-to-r from-blue-600 to-green-600 text-white py-4 rounded-xl font-bold text-xl hover:from-blue-700 hover:to-green-700 active:from-blue-800 active:to-green-800 transition-all shadow-lg"
+                                    >
+                                        Add Item
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4 mt-6">
+                            {items.map(item => {
+                                const status = getStockStatus(item.quantity);
+                                const isDefaultItem = defaultItems.includes(item.name);
+                                return (
+                                    <div key={item.id} className={`bg-white rounded-3xl shadow-xl p-5 border-4 ${status.borderColor} ${status.bgColor}`}>
+                                        <div className="flex items-start justify-between mb-3">
+                                            <div className="flex-1">
+                                                <h3 className="text-xl font-bold text-gray-900 mb-2">{item.name}</h3>
+                                                <span className={`${status.textColor} font-bold text-sm px-3 py-1 rounded-full border-2 ${status.borderColor} inline-block`}>
+                                                    {status.label}
+                                                </span>
+                                            </div>
+                                            {!isDefaultItem && (
+                                                <button
+                                                    onClick={() => deleteItem(item.id)}
+                                                    className="p-3 text-red-600 hover:bg-red-100 rounded-xl transition-colors border-2 border-red-300"
+                                                >
+                                                    <Trash2 size={24} />
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Quantity:</label>
+                                            <input
+                                                type="number"
+                                                value={item.quantity}
+                                                onChange={(e) => updateQuantity(item.id, e.target.value)}
+                                                className="w-full px-4 py-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-300 text-3xl font-black text-blue-900"
+                                                min="0"
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<InventoryApp />);
+    </script>
+</body>
+</html>
